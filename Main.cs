@@ -7,6 +7,7 @@ using System.Net.Http;
 using System.Net.Sockets;
 using System.Threading.Tasks;
 using UnityEngine;
+using System.Collections.Concurrent;
 
 [assembly: MelonInfo(typeof(ThunderstoreFix.Main), "ThunderstoreFix", "1.0.0", "AKA-Twizzler")]
 [assembly: MelonColor(0, 255, 0, 255)]
@@ -31,6 +32,11 @@ namespace ThunderstoreFix
             {
                 MelonLogger.Error($"ThunderstoreFix: Failed to patch: {ex.Message}");
             }
+        }
+
+        public override void OnUpdate()
+        {
+            MainThreadDispatcher.ExecuteQueuedActions();
         }
 
         private static bool DownloadThumbnailPrefix(string url, Action<Texture> action)
@@ -68,14 +74,28 @@ namespace ThunderstoreFix
                         client.DefaultRequestHeaders.UserAgent.ParseAdd("ThunderstoreFix/1.0.0");
                         byte[] bytes = await client.GetByteArrayAsync(url);
                         
-                        MelonLogger.Msg($"ThunderstoreFix: Downloaded {bytes.Length} bytes, creating texture...");
-                        
-                        var texture = new Texture2D(2, 2);
-                        if (ImageConversion.LoadImage(texture, bytes))
+                        MelonLogger.Msg($"ThunderstoreFix: Downloaded {bytes.Length} bytes, dispatching to main thread...");
+
+                        MainThreadDispatcher.QueueAction(() =>
                         {
-                            action(texture);
-                            MelonLogger.Msg($"ThunderstoreFix: Texture {texture.width}x{texture.height} applied");
-                        }
+                            try
+                            {
+                                var texture = new Texture2D(2, 2);
+                                if (ImageConversion.LoadImage(texture, bytes))
+                                {
+                                    action(texture);
+                                    MelonLogger.Msg($"ThunderstoreFix: Texture {texture.width}x{texture.height} applied");
+                                }
+                                else
+                                {
+                                    MelonLogger.Error("ThunderstoreFix: ImageConversion.LoadImage returned false");
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                MelonLogger.Error($"ThunderstoreFix: Texture creation error: {ex.Message}");
+                            }
+                        });
                     }
                 }
                 catch (Exception ex)
@@ -85,6 +105,36 @@ namespace ThunderstoreFix
             });
             
             return false; // Skip the original UnityWebRequestTexture method
+        }
+    }
+
+    /// <summary>
+    /// Queues actions to execute on the Unity main thread via MelonMod.OnUpdate().
+    /// BoneLib v3.2.1 does not expose a public MainThreadManager, so we provide our own.
+    /// </summary>
+    public static class MainThreadDispatcher
+    {
+        private static readonly ConcurrentQueue<Action> _actions = new();
+
+        public static void QueueAction(Action action)
+        {
+            if (action == null) return;
+            _actions.Enqueue(action);
+        }
+
+        public static void ExecuteQueuedActions()
+        {
+            while (_actions.TryDequeue(out var action))
+            {
+                try
+                {
+                    action();
+                }
+                catch (Exception ex)
+                {
+                    MelonLoader.MelonLogger.Error($"MainThreadDispatcher: {ex.Message}");
+                }
+            }
         }
     }
 }
