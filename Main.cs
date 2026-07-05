@@ -26,7 +26,6 @@ namespace ThunderstoreFix
                     prefix: new HarmonyMethod(typeof(Main).GetMethod(nameof(DownloadThumbnailPrefix), 
                         System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic))
                 );
-                MelonLogger.Msg("ThunderstoreFix: Patched DownloadThumbnail successfully");
             }
             catch (Exception ex)
             {
@@ -46,8 +45,6 @@ namespace ThunderstoreFix
                 MelonLogger.Warning("ThunderstoreFix: null/empty URL");
                 return false;
             }
-            
-            MelonLogger.Msg($"ThunderstoreFix: Downloading thumbnail (IPv4 forced): {url}");
             
             Task.Run(async () =>
             {
@@ -74,8 +71,6 @@ namespace ThunderstoreFix
                         client.DefaultRequestHeaders.UserAgent.ParseAdd("ThunderstoreFix/1.0.0");
                         byte[] bytes = await client.GetByteArrayAsync(url);
                         
-                        MelonLogger.Msg($"ThunderstoreFix: Downloaded {bytes.Length} bytes, dispatching to main thread...");
-
                         MainThreadDispatcher.QueueAction(() =>
                         {
                             try
@@ -84,7 +79,6 @@ namespace ThunderstoreFix
                                 if (ImageConversion.LoadImage(texture, bytes))
                                 {
                                     action(texture);
-                                    MelonLogger.Msg($"ThunderstoreFix: Texture {texture.width}x{texture.height} applied");
                                 }
                                 else
                                 {
